@@ -302,149 +302,101 @@ export const assessmentQuestions = {
   }
 }
 
-// Assessment level interpretations and recommendations
-export const assessmentLevels = [
-  {
-    level: 1,
-    name: 'Critical',
-    range: { min: 1, max: 2 },
-    color: '#c0392b',
-    emoji: '🚨',
-    description: 'You are experiencing significant mental health challenges',
-    recommendations: [
-      'Please consider reaching out to a mental health professional or therapist',
-      'Contact a crisis helpline or mental health support service immediately',
-      'Talk to someone you trust about what you are experiencing',
-      'Focus on basic self-care: eating, sleeping, and staying hydrated'
-    ]
-  },
-  {
-    level: 2,
-    name: 'Severe',
-    range: { min: 2.1, max: 3.5 },
+// ─── Assessment Levels: 1 = Severe (red), 2–3 = Moderate (orange), 4–5 = Good (green) ───
+export const assessmentLevels = {
+  severe: {
+    name: 'Needs Immediate Support',
+    emoji: '🔴',
     color: '#e74c3c',
-    emoji: '⚠️',
-    description: 'You are experiencing significant struggles with your mental health',
+    description: 'Your responses suggest you may be experiencing significant challenges right now. Please consider reaching out to a mental health professional or someone you trust.',
     recommendations: [
-      'Consider seeking professional help from a therapist or counselor',
-      'Talk to your doctor about your mental health concerns',
-      'Use this chatbot as a daily support tool',
-      'Implement stress-reduction techniques like deep breathing or journaling',
-      'Try to maintain regular sleep and eating schedules'
+      'Consider speaking with a mental health professional as soon as possible',
+      'Reach out to a trusted friend, family member, or counselor today',
+      'If you are in crisis, please contact a mental health helpline immediately',
+      'Practice grounding techniques: deep breathing or the 5-4-3-2-1 sensory exercise',
+      'Prioritize basic self-care: eating, hydrating, and resting'
     ]
   },
-  {
-    level: 3,
-    name: 'Moderate',
-    range: { min: 3.6, max: 5.5 },
-    color: '#f39c12',
-    emoji: '😟',
-    description: 'You are experiencing some mental health challenges',
+  moderate: {
+    name: 'Doing Okay, Room to Grow',
+    emoji: '🟠',
+    color: '#e67e22',
+    description: 'You are managing, but there are some areas where extra support or attention could make a meaningful difference in your well-being.',
     recommendations: [
-      'Use this chatbot regularly for daily emotional support',
-      'Practice stress management techniques',
-      'Engage in regular physical activity',
-      'Maintain a healthy sleep schedule',
-      'Consider speaking with a therapist if challenges persist',
-      'Focus on activities that bring you joy'
+      'Try journaling daily to identify patterns in your mood',
+      'Add one small wellness habit this week such as a short walk or better sleep schedule',
+      'Connect with someone you trust about how you are feeling',
+      'Explore stress management techniques like mindfulness or breathing exercises',
+      'Consider speaking with a counselor for extra support'
     ]
   },
-  {
-    level: 4,
-    name: 'Mild',
-    range: { min: 5.6, max: 7.5 },
-    color: '#3498db',
-    emoji: '😌',
-    description: 'You are managing fairly well overall',
-    recommendations: [
-      'Continue using healthy coping strategies',
-      'Engage in regular exercise and outdoor activities',
-      'Maintain social connections with friends and family',
-      'Use this chatbot for ongoing emotional wellness',
-      'Practice mindfulness or meditation regularly'
-    ]
-  },
-  {
-    level: 5,
-    name: 'Good',
-    range: { min: 7.6, max: 8.5 },
+  good: {
+    name: 'Thriving & Flourishing',
+    emoji: '🟢',
     color: '#27ae60',
-    emoji: '😊',
-    description: 'You are in a good place mentally and emotionally',
+    description: 'You are in a good place! Your wellbeing is strong. Keep nurturing your mental health habits and supporting those around you.',
     recommendations: [
-      'Maintain your current healthy habits',
-      'Continue social connections and positive relationships',
-      'Use this chatbot for ongoing personal growth',
-      'Share your positive coping strategies with others',
-      'Focus on helping others who may be struggling'
-    ]
-  },
-  {
-    level: 6,
-    name: 'Excellent',
-    range: { min: 8.6, max: 10 },
-    color: '#16a085',
-    emoji: '😄',
-    description: 'You are thriving with excellent mental and emotional well-being',
-    recommendations: [
-      'Keep doing what you are doing - it is working!',
-      'Maintain your positive lifestyle and routines',
-      'Consider becoming a support or mentor to others',
-      'Use this chatbot for continued personal development',
-      'Share your strategies and insights with your community'
+      'Keep up your current wellness routines — they are working!',
+      'Share your positive habits with someone who might benefit',
+      'Set a new personal growth goal to keep your momentum going',
+      'Practice gratitude daily to maintain your positive outlook',
+      'Check in with yourself weekly to stay aware of any shifts in your mood'
     ]
   }
-]
-
-// Get assessment level based on score
-export const getAssessmentLevel = (score) => {
-  return assessmentLevels.find(level => 
-    score >= level.range.min && score <= level.range.max
-  ) || assessmentLevels[0]
 }
 
-// Category-specific insights
+// ─── Core scoring logic: maps 1–5 scale to severe / moderate / good ───
+export const getAssessmentLevel = (score) => {
+  if (score <= 1) return assessmentLevels.severe      // 1       → red
+  if (score <= 3) return assessmentLevels.moderate    // 2 – 3   → orange
+  return assessmentLevels.good                        // 4 – 5   → green
+}
+
+// ─── Category-specific insights ───
 export const getCategoryInsights = (categoryName, score) => {
   const insights = {
-    anxiety: {
-      high: 'Your anxiety levels are elevated. Consider practicing grounding techniques and breathing exercises.',
+    'Overall Well-being': {
+      low:      'Your overall well-being needs attention. Please reach out for support.',
+      moderate: 'Your overall well-being is moderate. Small daily improvements can help.',
+      high:     'Your overall well-being is strong. Keep doing what is working!'
+    },
+    'Anxiety': {
+      low:      'Your anxiety levels are elevated. Consider grounding techniques and breathing exercises.',
       moderate: 'You experience moderate anxiety. Mindfulness and gradual exposure can help.',
-      low: 'Your anxiety is well-managed. Keep up your positive coping strategies.'
+      high:     'Your anxiety is well-managed. Keep up your positive coping strategies.'
     },
-    depression: {
-      high: 'You may be experiencing significant depressive symptoms. Please reach out to a mental health professional.',
+    'Depression': {
+      low:      'You may be experiencing significant depressive symptoms. Please reach out to a mental health professional.',
       moderate: 'You experience some depressive symptoms. Engage in activities you enjoy and maintain social connections.',
-      low: 'Your mood is generally positive. Continue engaging in activities that bring you joy.'
+      high:     'Your mood is generally positive. Continue engaging in activities that bring you joy.'
     },
-    stress: {
-      high: 'You are experiencing high stress levels. Prioritize stress-reduction activities.',
+    'Stress & Overwhelm': {
+      low:      'You are experiencing high stress. Prioritize rest and stress-reduction activities.',
       moderate: 'You experience moderate stress. Break tasks into smaller steps and practice relaxation techniques.',
-      low: 'You manage stress well. Continue your current strategies.'
+      high:     'You manage stress well. Continue your current strategies.'
     },
-    socialConnection: {
-      high: 'Your social connections are strong. Keep nurturing these important relationships.',
+    'Social Connection & Relationships': {
+      low:      'Building social connections may improve your well-being. Start with one small step today.',
       moderate: 'Consider reaching out to friends or family more often.',
-      low: 'Building social connections may help improve your well-being. Start with small steps.'
+      high:     'Your social connections are strong. Keep nurturing these important relationships.'
     },
-    selfEsteem: {
-      high: 'Your self-esteem is healthy. Maintain this positive self-view.',
-      moderate: 'Work on self-compassion and challenging negative self-talk.',
-      low: 'Focus on your strengths and practice self-affirmation daily.'
+    'Self-Esteem & Confidence': {
+      low:      'Focus on your strengths and practice self-affirmation daily.',
+      moderate: 'Work on self-compassion and gently challenge negative self-talk.',
+      high:     'Your self-esteem is healthy. Maintain this positive self-view.'
     },
-    lifestyle: {
-      high: 'Your lifestyle habits support good mental health. Keep it up!',
-      moderate: 'Try to improve one area, like sleep or exercise.',
-      low: 'Small improvements in self-care can make a big difference.'
+    'Lifestyle & Self-Care': {
+      low:      'Small improvements in self-care can make a big difference. Start with sleep or movement.',
+      moderate: 'Try to improve one area, like sleep consistency or daily exercise.',
+      high:     'Your lifestyle habits support good mental health. Keep it up!'
     }
   }
 
-  const category = categoryName.toLowerCase().replace(/[_\s&]/g, '').replace('socialconnectionrelationships', 'socialConnection')
-  
-  if (score >= 4) {
-    return insights[category]?.high || 'Good work maintaining your well-being.'
-  } else if (score >= 3) {
-    return insights[category]?.moderate || 'Consider ways to improve in this area.'
-  } else {
-    return insights[category]?.low || 'This area needs some attention.'
-  }
+  const category = insights[categoryName]
+
+  if (!category) return 'Keep paying attention to this area of your well-being.'
+
+  if (score >= 4) return category.high
+  if (score >= 2) return category.moderate
+  return category.low
 }
