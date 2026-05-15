@@ -84,7 +84,15 @@ export default function Login({ onLogin }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label htmlFor="password" style={{ margin: 0 }}>Password</label>
+              <Link
+                to="/forgotpassword"
+                style={{ color: '#27ae60', fontWeight: '600', textDecoration: 'none', fontSize: '13px' }}
+              >
+                Forgot password?
+              </Link>
+            </div>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input
                 type={showPassword ? 'text' : 'password'}

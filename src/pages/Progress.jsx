@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getMoodsFromStorage, getStreakFromStorage, clearAllStorage } from '../utils/storage'
+import { getMoodsFromStorage, getStreakFromStorage, clearAllStorage, getLatestAssessment, getAssessmentEngagements } from '../utils/storage'
 import { moodEmojis } from '../utils/data'
 
 export default function Progress() {
@@ -8,13 +8,20 @@ export default function Progress() {
   const [moodCounts, setMoodCounts] = useState({})
   const [wellnessScore, setWellnessScore] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [assessment, setAssessment] = useState(null)
+  const [engagements, setEngagements] = useState([])
 
   useEffect(() => {
     const loadData = async () => {
       const fetchedMoods = await getMoodsFromStorage()
       const fetchedStreak = await getStreakFromStorage()
+      const latestAssessment = await getLatestAssessment()
+      const assessmentEngagements = await getAssessmentEngagements()
+      
       setMoods(fetchedMoods)
       setStreak(fetchedStreak)
+      setAssessment(latestAssessment)
+      setEngagements(assessmentEngagements)
       setLoading(false)
     }
     loadData()
@@ -64,101 +71,97 @@ export default function Progress() {
     <div className="container">
 
       <div className="card">
-        <h2>Your Mental Health Journey 💚</h2>
+        <h2>Your Mental Health Journey</h2>
         <p style={{ color: '#666' }}>
           Track your mood trends and celebrate your progress.
         </p>
       </div>
 
-      {/* STATS */}
-      <div className="card">
-        <h3>Your Statistics</h3>
-        <div className="stats-grid">
-          <div className="stat-card">
-            <h4>Streak Days</h4>
-            <div className="number">{streak}</div>
-          </div>
-          <div className="stat-card">
-            <h4>Total Check-ins</h4>
-            <div className="number">{moods.length}</div>
-          </div>
-          <div className="stat-card">
-            <h4>Happy Days</h4>
-            <div className="number">{moodCounts.Happy || 0}</div>
-          </div>
-          <div className="stat-card">
-            <h4>Streak Record</h4>
-            <div className="number">{streak}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* WELLNESS BAR */}
-      <div className="card">
-        <h3>Weekly Mood Improvement</h3>
-        <div className="progress-bar">
-          <div className="progress" style={{ width: `${wellnessScore}%` }}></div>
-        </div>
-        <p>{wellnessScore}%</p>
-      </div>
-
-      {/* MOOD DISTRIBUTION */}
-      <div className="card">
-        <h3>Mood Distribution</h3>
-        <div className="stats-grid">
-          {Object.keys(moodPercents).map((mood) => (
-            <div className="stat-card" key={mood}>
-              <h4>{mood}</h4>
-              <div className="number">{moodPercents[mood]}%</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* HISTORY */}
-      <div className="card">
-        <h3>Recent Mood Entries</h3>
-        {moods.length > 0 ? (
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {[...moods].reverse().slice(0, 10).map((m, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: '12px',
-                  borderBottom: '1px solid #eee',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  borderRadius: '6px',
-                  marginBottom: '8px',
-                  backgroundColor: '#f9f9f9',
-                  transition: '0.3s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f8f5'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f9f9f9'}
-              >
-                <div>
-                  <span style={{ marginRight: '10px' }}>{moodEmojis[m.mood] || ''}</span>
-                  <strong>{m.mood}</strong>
-                </div>
-                <span style={{ fontSize: '12px', color: '#999' }}>
-                  {m.date} {m.time}
-                </span>
+      {/* ASSESSMENT STATUS */}
+      {assessment && assessment.categoryScores && (
+        <div className="card" style={{ borderLeft: `4px solid ${assessment.assessmentLevel.color}`, background: '#fafafa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ fontSize: '40px' }}>{assessment.assessmentLevel.emoji}</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', color: assessment.assessmentLevel.color }}>
+                  {assessment.assessmentLevel.name}
+                </h3>
+                <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  Last Assessment: <strong>{assessment.timestamp ? new Date(assessment.timestamp).toLocaleDateString() : 'Today'}</strong>
+                </p>
               </div>
-            ))}
+            </div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: assessment.assessmentLevel.color, textAlign: 'center' }}>
+              {assessment.overallScore}/5.0
+            </div>
           </div>
-        ) : (
-          <p style={{ textAlign: 'center', color: '#999' }}>
-            No mood entries yet.
-          </p>
-        )}
-      </div>
 
-      {/* RESET */}
-      <div className="card">
-        <h3>Settings</h3>
-        <button onClick={handleClearData}>Clear All Data</button>
-      </div>
+          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#555', fontStyle: 'italic' }}>
+            {assessment.assessmentLevel.description}
+          </p>
+
+          {/* Assessment breakdown */}
+          <div style={{ background: 'white', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
+            <h4 style={{ margin: '0 0 12px 0', color: '#27ae60', fontSize: '14px' }}>Your Assessment Breakdown:</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+              {Object.entries(assessment.categoryScores)
+                .sort((a, b) => b[1].score - a[1].score)
+                .map(([key, category], idx) => (
+                  <div key={idx} style={{
+                    padding: '12px',
+                    background: category.score >= 4 ? '#ffebee' : category.score >= 2.5 ? '#fff3e0' : '#e8f5e9',
+                    borderLeft: `3px solid ${category.score >= 4 ? '#e74c3c' : category.score >= 2.5 ? '#f39c12' : '#27ae60'}`,
+                    borderRadius: '6px'
+                  }}>
+                    <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: '600', color: '#333' }}>
+                      {category.name}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: category.score >= 4 ? '#e74c3c' : category.score >= 2.5 ? '#f39c12' : '#27ae60' }}>
+                      {category.score.toFixed(1)}/5
+                    </p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#666', lineHeight: '1.3' }}>
+                      {category.insight}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Recent engagements */}
+          {engagements.length > 0 && (
+            <div style={{ background: '#f0faf4', padding: '16px', borderRadius: '8px', borderLeft: '3px solid #27ae60' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#27ae60', fontSize: '14px' }}>Recent Chatbot Sessions with Assessment Context:</h4>
+              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                {engagements.slice(0, 5).map((eng, idx) => (
+                  <div key={idx} style={{
+                    padding: '10px',
+                    marginBottom: '8px',
+                    background: 'white',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <p style={{ margin: '0 0 2px 0', fontWeight: '600', color: '#333' }}>
+                        Status: <span style={{ color: eng.assessmentLevel === 'Thriving' ? '#27ae60' : eng.assessmentLevel === 'Managing' ? '#f39c12' : '#e74c3c' }}>
+                          {eng.assessmentLevel}
+                        </span>
+                      </p>
+                      <p style={{ margin: 0, color: '#999' }}>{eng.date} {eng.time}</p>
+                    </div>
+                    <span style={{ fontWeight: 'bold', color: '#27ae60' }}>
+                      {eng.overallScore}/5
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   )

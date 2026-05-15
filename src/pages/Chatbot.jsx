@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { moodData, inspirationalQuotes, breathingExercises } from '../utils/data'
-import { addMoodToStorage, updateStreakInStorage, getStreakFromStorage, getMoodsFromStorage, getCurrentUser } from '../utils/storage'
+import { addMoodToStorage, updateStreakInStorage, getStreakFromStorage, getMoodsFromStorage, getCurrentUser, getLatestAssessment, getAssessmentHistory, recordAssessmentEngagement } from '../utils/storage'
+import { getPersonalizedAdvice, generateAssessmentSummary, getMotivationalMessage } from '../utils/assessmentUtils'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 const HISTORY_KEY = 'kumusta_chat_history'
@@ -324,20 +325,26 @@ function SessionPreview({ messages }) {
 export default function Chatbot() {
   const [selectedAvatar, setSelectedAvatar] = useState(null)
   const [confirmed, setConfirmed] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-const [streak, setStreak] = useState(0)
-const [moodCount, setMoodCount] = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [moodCount, setMoodCount] = useState(0)
+  const [assessment, setAssessment] = useState(null)
+  const [assessmentLoaded, setAssessmentLoaded] = useState(false)
 
-useEffect(() => {
-  const loadStats = async () => {
-    const s = await getStreakFromStorage()
-    const moods = await getMoodsFromStorage()
-    setStreak(s)
-    setMoodCount(moods.length)
-  }
-  loadStats()
-}, [])
+  useEffect(() => {
+    const loadStats = async () => {
+      const s = await getStreakFromStorage()
+      const moods = await getMoodsFromStorage()
+      const latestAssessment = await getLatestAssessment()
+      setStreak(s)
+      setMoodCount(moods.length)
+      setAssessment(latestAssessment)
+      setAssessmentLoaded(true)
+    }
+    loadStats()
+  }, [])
   const [breathingText, setBreathingText] = useState('Choose an exercise to start')
   const [isAiLoading, setIsAiLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -362,10 +369,43 @@ useEffect(() => {
 
   const handleConfirmAvatar = () => {
     if (!selectedAvatar) return
+    setShowSummary(true)
+    
+    // Record that user viewed assessment summary
+    if (assessment && assessment.categoryScores) {
+      recordAssessmentEngagement(assessment)
+    }
+  }
+
+  const handleStartChat = () => {
     setConfirmed(true)
+    setShowSummary(false)
     conversationHistoryRef.current = []
     const avatar = avatars.find(a => a.id === selectedAvatar)
-    const greeting = `Hi! I'm ${avatar.name}. Kumusta ka? I'm here to listen and support you. How are you feeling today?`
+    
+    // Build personalized greeting based on assessment
+    let greeting = `Hi! I'm ${avatar.name}. Kumusta ka? I'm here to listen and support you.`
+    
+    if (assessment && assessment.categoryScores) {
+      // Add motivational message based on their profile
+      const motivationalMsg = getMotivationalMessage(assessment.categoryScores, assessment.overallScore)
+      greeting += `\n\n${motivationalMsg}`
+      
+      // Get personalized advice for their top concern
+      const personalizedAdvice = getPersonalizedAdvice(assessment.categoryScores, assessment.overallScore)
+      if (Object.keys(personalizedAdvice).length > 0) {
+        const firstAdviceKey = Object.keys(personalizedAdvice)[0]
+        const advice = personalizedAdvice[firstAdviceKey]
+        if (advice) {
+          greeting += `\n\n Quick Tip for You:\nTry this: ${advice.strategy}\n${advice.tip}`
+        }
+      }
+      
+      greeting += `\n\nWhat's on your mind today?`
+    } else {
+      greeting += ` How are you feeling today?\n\n(Psst - if you haven't taken our assessment yet, that would help me give you more personalized advice!)`
+    }
+    
     setMessages([{ type: 'bot', text: greeting }])
   }
 
@@ -376,6 +416,7 @@ useEffect(() => {
       saveChatSession(selectedAvatar, avatar.name, messages)
     }
     setConfirmed(false)
+    setShowSummary(false)
     setSelectedAvatar(null)
     setMessages([])
     conversationHistoryRef.current = []
@@ -404,10 +445,38 @@ useEffect(() => {
   const getAIResponse = async (userMessage, avatarPersonality) => {
     const username = getCurrentUser() || 'friend'
 
+    // Build assessment context for personalized response
+    let assessmentContext = ''
+    if (assessment && assessment.categoryScores) {
+      assessmentContext = `
+
+IMPORTANT - USER'S MENTAL HEALTH ASSESSMENT (PERSONALIZED CONTEXT):
+Based on recent assessment, here's what the user is experiencing:
+`
+      Object.entries(assessment.categoryScores).forEach(([key, data]) => {
+        assessmentContext += `\n• ${data.name}: Score ${data.score}/5.0 - ${data.insight}`
+      })
+
+      assessmentContext += `\n\nUser's Overall Status: ${assessment.assessmentLevel.name} (Score: ${assessment.overallScore}/5.0)
+Description: ${assessment.assessmentLevel.description}
+
+PERSONALIZATION RULES:
+1. Reference their specific challenges from the assessment
+2. Provide coping strategies tailored to THEIR profile (not generic)
+3. If they mention issues in high-scoring categories, prioritize those
+4. Suggest specific techniques from their personalized coping strategies
+5. Be extra supportive in critical areas (score ≥ 4)
+6. Celebrate improvements in lower-scoring areas
+7. Always tie advice back to their unique situation`
+    } else {
+      assessmentContext = `\n\nNOTE: User hasn't completed an assessment yet. Provide general mental health support and encourage them to take an assessment for personalized advice.`
+    }
+
     const systemPrompt = `${avatarPersonality}
 
 You are a mental health support companion for Filipino users of the Kumusta AI app.
 The user's name is ${username}.
+${assessmentContext}
 
 YOUR SCOPE — you may ONLY respond to topics related to:
 - Emotions and feelings (sadness, anxiety, stress, loneliness, anger, happiness, etc.)
@@ -428,7 +497,8 @@ Important guidelines:
 - Never give medical diagnoses
 - Do NOT use any emojis in your responses
 - Write naturally like a real person texting
-- Address the user by their name occasionally`
+- Address the user by their name occasionally
+- When giving tips, make them SPECIFIC to their assessment profile, not generic`
 
     const history = conversationHistoryRef.current.map(msg => ({
       role: msg.role === 'model' ? 'assistant' : 'user',
@@ -531,6 +601,140 @@ Important guidelines:
   }
 
   if (!confirmed) {
+    // Show assessment summary screen if showSummary is true
+    if (showSummary && assessment && assessment.categoryScores) {
+      const currentAvatar = avatars.find(a => a.id === selectedAvatar)
+      const adviceData = getPersonalizedAdvice(assessment.categoryScores, assessment.overallScore)
+      
+      return (
+        <div className="container">
+          <div className="card" style={{ textAlign: 'center', padding: '0px' }}>
+            {/* Header */}
+            <div style={{ background: `${assessment.assessmentLevel.color}`, color: 'white', padding: '32px 24px', borderRadius: '12px 12px 0 0', marginBottom: '0' }}>
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>{assessment.assessmentLevel.emoji}</div>
+              <h2 style={{ margin: '0 0 8px 0', color: 'white' }}>Your Mental Health Status</h2>
+              <p style={{ margin: '0 0 16px 0', fontSize: '16px', opacity: 0.9 }}>
+                Overall Score: <strong>{assessment.overallScore}/5.0</strong>
+              </p>
+              <p style={{ margin: 0, fontSize: '14px', opacity: 0.85, fontStyle: 'italic' }}>
+                {assessment.assessmentLevel.description}
+              </p>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '32px 24px' }}>
+              {/* What we know about you */}
+              <div style={{ textAlign: 'left', marginBottom: '32px', background: '#f9f9f9', padding: '20px', borderRadius: '12px', borderLeft: `4px solid ${assessment.assessmentLevel.color}` }}>
+                <h3 style={{ margin: '0 0 16px 0', color: assessment.assessmentLevel.color }}>
+                  What We Know About Your Situation:
+                </h3>
+                <div style={{ fontSize: '14px', lineHeight: '1.8', color: '#333' }}>
+                  {Object.entries(assessment.categoryScores)
+                    .sort((a, b) => b[1].score - a[1].score)
+                    .slice(0, 3)
+                    .map(([key, data], idx) => (
+                      <p key={idx} style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '50%',
+                          background: data.score >= 4 ? '#e74c3c' : data.score >= 2.5 ? '#f39c12' : '#27ae60'
+                        }}></span>
+                        <strong>{data.name}</strong> ({data.score}/5): {data.insight}
+                      </p>
+                    ))}
+                </div>
+              </div>
+
+              {/* What we can help with */}
+              <div style={{ textAlign: 'left', marginBottom: '32px', background: '#e8f5e9', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #27ae60' }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#27ae60' }}>
+                  How {currentAvatar.name} Can Help:
+                </h3>
+                <ul style={{ margin: '0', paddingLeft: '20px', fontSize: '14px', lineHeight: '1.8', color: '#333' }}>
+                  <li> Listen without judgment to what you're going through</li>
+                  <li> Offer specific coping strategies tailored to YOUR challenges</li>
+                  <li> Track your progress and celebrate improvements</li>
+                  <li> Provide actionable advice based on your assessment</li>
+                  <li> Be here consistently as you work through things</li>
+                </ul>
+              </div>
+
+              {/* Personalized tips preview */}
+              {Object.keys(adviceData).length > 0 && (
+                <div style={{ textAlign: 'left', marginBottom: '32px', background: '#fff3e0', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #f39c12' }}>
+                  <h3 style={{ margin: '0 0 16px 0', color: '#f39c12' }}>
+                     Strategies We'll Use For You:
+                  </h3>
+                  <div>
+                    {Object.entries(adviceData).slice(0, 2).map(([key, strategy], idx) => (
+                      <div key={idx} style={{ marginBottom: idx === 0 ? '16px' : '0', paddingBottom: idx === 0 ? '16px' : '0', borderBottom: idx === 0 ? '1px solid #ffe0b2' : 'none' }}>
+                        <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#e65100' }}>
+                          {idx + 1}. {strategy.strategy}
+                        </p>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#555', fontStyle: 'italic' }}>
+                          {strategy.rationale}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Call to action */}
+              <div style={{ background: '#f0faf4', padding: '20px', borderRadius: '12px', marginBottom: '0', textAlign: 'center' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#27ae60' }}>Ready to start?</h4>
+                <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#555' }}>
+                  {currentAvatar.name} will tailor every conversation to help with your specific needs.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
+            <button
+              onClick={() => {
+                setShowSummary(false)
+                setSelectedAvatar(null)
+              }}
+              style={{
+                padding: '12px 32px',
+                fontSize: '14px',
+                background: 'white',
+                color: '#27ae60',
+                border: '1px solid #c8f0da',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                boxShadow: 'none'
+              }}
+            >
+              Change Companion
+            </button>
+            <button
+              onClick={handleStartChat}
+              style={{
+                padding: '12px 48px',
+                fontSize: '14px',
+                background: '#27ae60',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                boxShadow: '0 4px 12px rgba(39, 174, 96, 0.3)'
+              }}
+            >
+              Start Chatting with {currentAvatar.name}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Original avatar selection screen
     return (
       <>
         <HistoryPanel
@@ -666,15 +870,61 @@ Important guidelines:
           <div className="quote-box">"{inspirationalQuotes[Math.floor(Math.random() * inspirationalQuotes.length)]}"</div>
         </div>
 
-        <div className="card">
-          <h3>How are you feeling today?</h3>
-          <div className="mood">
-            <button onClick={() => handleSetMood('Happy')}><TwEmoji emoji="😊" size={32} /></button>
-            <button onClick={() => handleSetMood('Sad')}><TwEmoji emoji="😢" size={32} /></button>
-            <button onClick={() => handleSetMood('Anxious')}><TwEmoji emoji="😰" size={32} /></button>
-            <button onClick={() => handleSetMood('Stressed')}><TwEmoji emoji="😣" size={32} /></button>
+        {assessment && assessment.categoryScores && (
+          <div className="card" style={{ borderLeft: `4px solid ${assessment.assessmentLevel.color}`, background: '#fafafa' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '32px' }}>{assessment.assessmentLevel.emoji}</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', color: assessment.assessmentLevel.color }}>
+                  {assessment.assessmentLevel.name}
+                </h3>
+                <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>
+                  Overall Score: <strong>{assessment.overallScore}/5.0</strong>
+                </p>
+              </div>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: '#555', marginBottom: '16px', fontStyle: 'italic' }}>
+              {assessment.assessmentLevel.description}
+            </p>
+
+            <div style={{ background: 'white', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: '#27ae60', fontSize: '14px' }}>Your Areas:</h4>
+              <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.6' }}>
+                {Object.entries(assessment.categoryScores)
+                  .sort((a, b) => b[1].score - a[1].score)
+                  .map(([key, category], idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span>{category.name}</span>
+                      <strong style={{ color: category.score >= 4 ? '#e74c3c' : category.score >= 2.5 ? '#f39c12' : '#27ae60' }}>
+                        {category.score}/5
+                      </strong>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {(() => {
+              const advice = getPersonalizedAdvice(assessment.categoryScores, assessment.overallScore)
+              const topAdviceKey = Object.keys(advice)[0]
+              if (topAdviceKey && advice[topAdviceKey]) {
+                const tip = advice[topAdviceKey]
+                return (
+                  <div style={{ background: '#e8f5e9', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #27ae60' }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#27ae60', fontSize: '14px' }}>💡 Personalized Tip:</h4>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#2e7d32', fontWeight: '600' }}>
+                      {tip.strategy}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#555', lineHeight: '1.5' }}>
+                      {tip.rationale}
+                    </p>
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
-        </div>
+        )}
 
         <div className="card">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
@@ -697,19 +947,78 @@ Important guidelines:
           </h3>
 
           <div className="chat-box" ref={chatBoxRef}>
-            {messages.map((msg, idx) => (
-              msg.type === 'typing' ? (
+            {messages.map((msg, idx) => {
+              const currentAvatar = avatars.find(a => a.id === selectedAvatar)
+              
+              return msg.type === 'typing' ? (
                 <div key={idx} className="message bot typing-indicator">
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
+                  <div style={{ 
+                    width: '40px', 
+                    height: '40px', 
+                    borderRadius: '50%', 
+                    background: '#27ae60',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '12px',
+                    flexShrink: 0,
+                    marginRight: '12px',
+                    fontWeight: 'bold'
+                  }}>
+                    {currentAvatar?.svg || '💬'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <div className="typing-dot"></div>
+                    <div className="typing-dot"></div>
+                    <div className="typing-dot"></div>
+                  </div>
+                </div>
+              ) : msg.type === 'bot' ? (
+                <div key={idx} className={`message ${msg.type}`} style={{ whiteSpace: 'pre-wrap', display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                  <div style={{ 
+                    width: '40px', 
+                    height: '40px', 
+                    borderRadius: '50%', 
+                    background: 'linear-gradient(135deg, #27ae60, #2ecc71)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '20px',
+                    flexShrink: 0,
+                    boxShadow: '0 2px 8px rgba(39, 174, 96, 0.3)',
+                    overflow: 'hidden'
+                  }}>
+                    {currentAvatar?.svg || '🤖'}
+                  </div>
+                  <div style={{
+                    background: '#f0faf4',
+                    padding: '12px 16px',
+                    borderRadius: '16px',
+                    borderBottomLeft: '4px',
+                    maxWidth: 'calc(100% - 52px)',
+                    wordWrap: 'break-word'
+                  }}>
+                    {msg.text}
+                  </div>
                 </div>
               ) : (
-                <div key={idx} className={`message ${msg.type}`} style={{ whiteSpace: 'pre-wrap' }}>
-                  {msg.text}
+                <div key={idx} className={`message ${msg.type}`} style={{ whiteSpace: 'pre-wrap', display: 'flex', gap: '12px', alignItems: 'flex-end', justifyContent: 'flex-end' }}>
+                  <div style={{
+                    background: '#27ae60',
+                    color: 'white',
+                    padding: '12px 16px',
+                    borderRadius: '16px',
+                    borderBottomRight: '4px',
+                    maxWidth: '70%',
+                    wordWrap: 'break-word'
+                  }}>
+                    {msg.text}
+                  </div>
                 </div>
               )
-            ))}
+            })}
           </div>
 
           <div className="input-area">

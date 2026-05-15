@@ -40,6 +40,14 @@ export default function Register({ onLogin }) {
     try {
       if (!fullName.trim()) throw new Error('Full name is required')
       if (!username.trim()) throw new Error('Username is required')
+      
+      // Check if username has both letters and numbers
+      const hasLetters = /[a-zA-Z]/.test(username)
+      const hasNumbers = /[0-9]/.test(username)
+      if (!hasLetters || !hasNumbers) {
+        throw new Error('Username must contain both letters and numbers')
+      }
+      
       if (!password) throw new Error('Password is required')
       if (password.length < 8) throw new Error('Password must be at least 8 characters')
       if (password !== confirmPassword) throw new Error('Passwords do not match')
@@ -84,7 +92,10 @@ export default function Register({ onLogin }) {
               id="fullName"
               placeholder="Enter your full name"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[0-9]/g, '');
+                setFullName(value);
+              }}
               disabled={loading}
             />
           </div>

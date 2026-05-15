@@ -140,21 +140,6 @@ export default function Register({ onLogin }) {
           </Link>
         </div>
 
-        <div className="login-features">
-          <div className="feature-item">
-            <span className="feature-icon">💬</span>
-            <p>24/7 AI Support</p>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon">📊</span>
-            <p>Track Progress</p>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon">🌬</span>
-            <p>Wellness Tools</p>
-          </div>
-        </div>
-
       </div>
       <div className="login-bg-decoration"></div>
     </div>
